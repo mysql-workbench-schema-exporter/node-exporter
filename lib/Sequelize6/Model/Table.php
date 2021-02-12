@@ -36,6 +36,7 @@ use MwbExporter\Object\JS;
 use MwbExporter\Helper\Comment;
 use MwbExporter\Formatter\DatatypeConverterInterface;
 use MwbExporter\Model\ForeignKey;
+use MwbExporter\Formatter\FormatterInterface;
 
 class Table extends BaseTable
 {
@@ -247,12 +248,12 @@ class Table extends BaseTable
             $foreignColumnName = $local->getForeign()->getColumnName();
             $as = "";
             if ($relatedColumnName) {
-                $relatedAlias = preg_replace("/_?${foreignColumnName}_?/", '', $relatedColumnName);
-                $as = $this->getNaming(sprintf('%_by_%s', lcfirst($local->isManyToOne()
-                    ? $this->pluralize($local->getOwningTable()->getModelName())
-                    : $local->getOwningTable()->getModelName()), $relatedAlias));
+                $relatedAlias = preg_replace("/(^${foreignColumnName}_|_${foreignColumnName}\$)/", '', $relatedColumnName);
+                $as = $this->getNaming(sprintf('as_%s_%s',
+                    $relatedAlias,
+                    $local->getOwningTable()->getModelName()), null, true);
             } else {
-                $as = $this->getNaming($local->isManyToOne() ? $this->pluralize($local->getOwningTable()->getModelName()) : $local->getOwningTable()->getModelName());
+                $as = $this->getNaming($local->getOwningTable()->getModelName(), null, true);
             }
 
             if ($as === "" || $as === $local->getOwningTable()->getModelName()) {
@@ -262,7 +263,7 @@ class Table extends BaseTable
             $options = array(
                 'foreignKey'    => array(
                     'name'          => $this->getNaming($local->getLocal()->getColumnName()),
-                    'allowNull'     => $local->getLocal()->isNotNull()
+                    'allowNull'     => !$local->getLocal()->isNotNull(),
                 ),
                 'onUpdate'      => $local->getParameter('updateRule'),
                 'onDelete'      => $local->getParameter('deleteRule'),
@@ -308,8 +309,8 @@ class Table extends BaseTable
             $as = null;
             $foreignColumnName = $foreign->getForeign()->getColumnName();
             if ($relatedColumnName) {
-                $relatedAlias = preg_replace("/_?${foreignColumnName}_?/", '', $relatedColumnName);
-                $as = $this->getNaming($relatedAlias);
+                $relatedAlias = preg_replace("/(^${foreignColumnName}_|_${foreignColumnName}\$)/", '', $relatedColumnName);
+                $as = $this->getNaming($relatedAlias, null, true);
                 if ($as === $foreign->getReferencedTable()->getModelName()) {
                     $as = null;
                 }
@@ -317,7 +318,7 @@ class Table extends BaseTable
             $options = array(
                 'foreignKey'    => array(
                     'name'          => $this->getNaming($foreign->getLocal()->getColumnName()),
-                    'allowNull'     => $foreign->getLocal()->isNotNull()
+                    'allowNull'     => !$foreign->getLocal()->isNotNull(),
                 ),
                 'onUpdate'      => $foreign->getParameter('updateRule'),
                 'onDelete'      => $foreign->getParameter('deleteRule'),
@@ -354,12 +355,11 @@ class Table extends BaseTable
                 'through'       => $relation['reference']->getOwningTable()->getRawTableName(),
                 'foreignKey'    => array(
                     'name'          => $relation['reference']->getLocal()->getColumnName(),
-                    'allowNull'     => $relation['reference']->getLocal()->isNotNull()
                 ),
                 'onUpdate'      => $relation['reference']->getParameter('updateRule'),
                 'onDelete'      => $relation['reference']->getParameter('deleteRule'),
                 'tarketKey'     => $this->getNaming($relation['reference']->getForeign()->getColumnName()),
-                'as'            => $this->pluralize($this->getNaming($relation['refTable']->getModelName()))
+                'as'            => $this->getNaming($relation['refTable']->getModelName(), null, true)
             );
 
             $writer
@@ -385,5 +385,15 @@ class Table extends BaseTable
     public function formatRelatedName($column, $code = true)
     {
         return $code ? sprintf('%s', $column) : sprintf('related by `%s`', $column);
+    }
+
+    public function getNaming($name, $strategy = null, $isModel = false) {
+        if (!$strategy) {
+            $strategy = $this->getConfig()->get(FormatterInterface::CFG_NAMING_STRATEGY);
+            if ($strategy === FormatterInterface::NAMING_CAMEL_CASE && $isModel) {
+                $strategy = FormatterInterface::NAMING_PASCAL_CASE;
+            }
+        }
+        return parent::getNaming($name, $strategy);
     }
 }
